@@ -17,6 +17,7 @@ ros2 launch turtlebot3_navigation2 navigation2.launch.py map:=$HOME/map.yaml
 반드니 use_sim_time:=true로 설정해주기 
 
 마지막으로 html파일 열어주기 
+[ map.html ]
 
 시현영상 
 https://youtu.be/6kWB7nokbo0 
