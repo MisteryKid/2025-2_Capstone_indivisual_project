@@ -1,5 +1,13 @@
 ## 작동법 
 
+클론 후 다음과 같이 기본 세팅 진행
+```
+colcon build --symlink-install
+source install/setup.bash
+export TURTLEBOT3_MODEL=burger
+```
+
+
 # case 1 : 웹에서 1대의 터틀봇 자율주행 실행하기 
 ### 1번 tf 변환기 준비  
 ```
