@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Pure Teleop Multi-Robot Viewer</title>
+
+<!-- libs -->
+<script src="https://code.createjs.com/1.0.0/easeljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/eventemitter2@6.4.9/lib/eventemitter2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/ros2d@0.9.0/build/ros2d.min.js"></script>
+
+<style>
+  body { margin:0; font-family: Arial, sans-serif; }
+  #container { display:flex; height:100vh; }
+
+  #map { flex:3; border-right:3px solid #333; }
+
+  #panel {
+    flex:1;
+    padding:20px;
+    background:#f4f4f4;
+  }
+
+  h2 { margin-top:0; }
+
+  .robot-btn {
+    width:100%;
+    padding:12px;
+    font-size:16px;
+    margin-top:10px;
+    cursor:pointer;
+    border:2px solid #333;
+    background:white;
+  }
+
+  .robot-btn.active {
+    background:#333;
+    color:white;
+  }
+
+  .hint {
+    margin-top:20px;
+    font-size:14px;
+    color:#555;
+    line-height:1.6;
+  }
+</style>
+
+<script type="text/javascript">
+function init() {
+
+  /* ===============================
+   * ROS 연결
+   * =============================== */
+  const ros = new ROSLIB.Ros({
+    url: 'ws://localhost:9090'
+  });
+
+  ros.on('connection', () => {
+    document.getElementById("status").innerText = "Connected";
+  });
+
+  ros.on('close', () => {
+    document.getElementById("status").innerText = "Disconnected";
+  });
+
+  /* ===============================
+   * Viewer + Map
+   * =============================== */
+  const viewer = new ROS2D.Viewer({
+    divID: 'map',
+    width: window.innerWidth * 0.75,
+    height: window.innerHeight
+  });
+
+  const gridClient = new ROS2D.OccupancyGridClient({
+    ros: ros,
+    rootObject: viewer.scene,
+    topic: '/map',
+    continuous: true
+  });
+
+  /* ===============================
+   * 로봇 정의
+   * =============================== */
+  const robots = {
+    "/TB3_1": { color: [255,0,0],   marker: null },
+    "/TB3_2": { color: [0,0,255],   marker: null },
+    "/TB3_3": { color: [0,180,0],   marker: null }
+  };
+
+  Object.keys(robots).forEach(name => {
+    const c = robots[name].color;
+    const marker = new ROS2D.ArrowShape({
+      size: 0.35,
+      strokeSize: 0.05,
+      fillColor: createjs.Graphics.getRGB(c[0],c[1],c[2],0.9),
+      strokeColor: createjs.Graphics.getRGB(0,0,0,1)
+    });
+    marker.visible = false;
+    viewer.scene.addChild(marker);
+    robots[name].marker = marker;
+  });
+
+  /* 맵 로드 시 마커를 항상 위로 */
+  gridClient.on('change', function () {
+    viewer.scaleToDimensions(
+      gridClient.currentGrid.width,
+      gridClient.currentGrid.height
+    );
+    viewer.shift(
+      gridClient.currentGrid.pose.position.x,
+      gridClient.currentGrid.pose.position.y
+    );
+
+    viewer.shift(0, 0);
+
+
+    Object.values(robots).forEach(r => {
+      viewer.scene.setChildIndex(
+        r.marker,
+        viewer.scene.numChildren - 1
+      );
+    });
+  });
+
+  /* ===============================
+   * TF 처리 (odom → base_footprint)
+   * =============================== */
+  const tfTopic = new ROSLIB.Topic({
+    ros: ros,
+    name: '/tf',
+    messageType: 'tf2_msgs/msg/TFMessage'
+  });
+
+tfTopic.subscribe(msg => {
+  msg.transforms.forEach(ts => {
+
+    Object.keys(robots).forEach(name => {
+
+      if (
+        ts.header.frame_id === name + '/odom' &&
+        (
+          ts.child_frame_id === name + '/base_footprint' ||
+          ts.child_frame_id === name + '/base_link'
+        )
+      ) {
+        const t = ts.transform.translation;
+        const q = ts.transform.rotation;
+
+        const yaw = quatToYaw(q);
+
+        const m = robots[name].marker;
+        m.x = t.x;
+        m.y = -t.y;                 // ros2d 좌표계 보정
+        m.rotation = -yaw * 180 / Math.PI;
+        m.visible = true;
+
+        viewer.shift(t.x, t.y);
+
+      }
+
+    });
+  });
+});
+
+
+    // robots["/TB3_1"].marker.x = 0;
+    // robots["/TB3_1"].marker.y = 0;
+    // robots["/TB3_1"].marker.visible = true;
+
+  function quatToYaw(q) {
+    const siny = 2 * (q.w * q.z + q.x * q.y);
+    const cosy = 1 - 2 * (q.y * q.y + q.z * q.z);
+    return Math.atan2(siny, cosy);
+  }
+
+  /* ===============================
+   * Teleop (키보드)
+   * =============================== */
+  let selectedRobot = "/TB3_1";
+
+  let cmdVelTopic = new ROSLIB.Topic({
+    ros: ros,
+    name: selectedRobot + '/cmd_vel',
+    messageType: 'geometry_msgs/msg/Twist'
+  });
+
+  function selectRobot(name) {
+    selectedRobot = name;
+    cmdVelTopic = new ROSLIB.Topic({
+      ros: ros,
+      name: selectedRobot + '/cmd_vel',
+      messageType: 'geometry_msgs/msg/Twist'
+    });
+
+    document.querySelectorAll('.robot-btn')
+      .forEach(b => b.classList.remove('active'));
+    document.getElementById("btn_" + name.replace("/",""))
+      .classList.add('active');
+  }
+
+  document.addEventListener('keydown', e => {
+    let linear = 0.0;
+    let angular = 0.0;
+
+    if (e.key === 'ArrowUp')    linear = 0.25;
+    if (e.key === 'ArrowDown')  linear = -0.25;
+    if (e.key === 'ArrowLeft')  angular = 0.8;
+    if (e.key === 'ArrowRight') angular = -0.8;
+
+    if (linear !== 0 || angular !== 0) {
+      cmdVelTopic.publish(new ROSLIB.Message({
+        linear:  { x: linear, y: 0, z: 0 },
+        angular: { x: 0, y: 0, z: angular }
+      }));
+    }
+  });
+
+  document.addEventListener('keyup', () => {
+    cmdVelTopic.publish(new ROSLIB.Message({
+      linear:  { x: 0, y: 0, z: 0 },
+      angular: { x: 0, y: 0, z: 0 }
+    }));
+  });
+
+  window.selectRobot = selectRobot;
+}
+</script>
+</head>
+
+<body onload="init()">
+<div id="container">
+
+  <div id="map"></div>
+
+  <div id="panel">
+    <h2>Pure Teleop</h2>
+    <p>Status: <b id="status">Connecting...</b></p>
+
+    <h3>Robot Select</h3>
+    <button id="btn_TB3_1" class="robot-btn active"
+            onclick="selectRobot('/TB3_1')">TB3 1</button>
+    <button id="btn_TB3_2" class="robot-btn"
+            onclick="selectRobot('/TB3_2')">TB3 2</button>
+    <button id="btn_TB3_3" class="robot-btn"
+            onclick="selectRobot('/TB3_3')">TB3 3</button>
+
+    <div class="hint">
+      <b>Keyboard Control</b><br>
+      ↑ Forward<br>
+      ↓ Backward<br>
+      ← Rotate Left<br>
+      → Rotate Right<br><br>
+
+      <b>Mode</b><br>
+      Nav2 ❌<br>
+      AMCL ❌<br>
+      Odom-based Teleop ✅
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

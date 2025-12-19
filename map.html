@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Nav2 Debug Viewer</title>
+
+<!-- libs -->
+<script src="https://code.createjs.com/1.0.0/easeljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/eventemitter2@6.4.9/lib/eventemitter2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/ros2d@0.9.0/build/ros2d.min.js"></script>
+
+<script type="text/javascript">
+function init() {
+
+  /* =================================================
+   * 1. ROS 연결
+   * ================================================= */
+  const ros = new ROSLIB.Ros({
+    url: 'ws://localhost:9090'
+  });
+
+  ros.on('connection', () => {
+    document.getElementById("status").innerHTML = "연결됨";
+    document.getElementById("status").style.color = "green";
+  });
+
+  ros.on('error', () => {
+    document.getElementById("status").innerHTML = "에러";
+  });
+
+  ros.on('close', () => {
+    document.getElementById("status").innerHTML = "연결 끊김";
+  });
+
+  /* =================================================
+   * 2. Viewer + Map
+   * ================================================= */
+  const viewer = new ROS2D.Viewer({
+    divID: 'map',
+    width: 900,
+    height: 900
+  });
+
+  const gridClient = new ROS2D.OccupancyGridClient({
+    ros: ros,
+    rootObject: viewer.scene,
+    topic: '/map',
+    continuous: true
+  });
+
+  gridClient.on('change', function () {
+    viewer.scaleToDimensions(
+      gridClient.currentGrid.width,
+      gridClient.currentGrid.height
+    );
+    viewer.shift(
+      gridClient.currentGrid.pose.position.x,
+      gridClient.currentGrid.pose.position.y
+    );
+
+    // viewer.scene.rotation = -90;
+    // viewer.scene.x += 300;
+    // viewer.scene.y += 100;
+  });
+
+  /* =================================================
+   * 3. Robot Marker
+   * ================================================= */
+  const robotMarker = new ROS2D.ArrowShape({
+    size: 0.3,
+    strokeSize: 0.05,
+    pulse: true,
+    fillColor: createjs.Graphics.getRGB(255, 0, 0, 0.9),
+    strokeColor: createjs.Graphics.getRGB(255, 0, 0, 1.0)
+  });
+  viewer.scene.addChild(robotMarker);
+
+  /* =================================================
+   * 4. TF 처리 (map → odom → base_footprint)
+   * ================================================= */
+  let tfMapOdom = null;
+  let tfOdomBase = null;
+
+  const tfTopic = new ROSLIB.Topic({
+    ros: ros,
+    name: '/tf',
+    messageType: 'tf2_msgs/msg/TFMessage'
+  });
+
+  tfTopic.subscribe(function (msg) {
+    msg.transforms.forEach(ts => {
+      const parent = ts.header.frame_id;
+      const child = ts.child_frame_id;
+
+      if (parent === 'map' && child === 'odom') {
+        tfMapOdom = ts.transform;
+      }
+      if (parent === 'odom' && child === 'base_footprint') {
+        tfOdomBase = ts.transform;
+      }
+    });
+
+    if (tfMapOdom && tfOdomBase) {
+      updateRobotPose();
+    }
+  });
+
+  function updateRobotPose() {
+    const t1 = tfMapOdom.translation;
+    const q1 = tfMapOdom.rotation;
+    const t2 = tfOdomBase.translation;
+    const q2 = tfOdomBase.rotation;
+
+    const yaw1 = quatToYaw(q1);
+    const yaw2 = quatToYaw(q2);
+    const yaw = yaw1 + yaw2;
+
+    const x = t1.x + Math.cos(yaw1) * t2.x - Math.sin(yaw1) * t2.y;
+    const y = t1.y + Math.sin(yaw1) * t2.x + Math.cos(yaw1) * t2.y;
+
+    robotMarker.x = x;
+    robotMarker.y = -y;
+    robotMarker.rotation = -yaw * 180.0 / Math.PI;
+    robotMarker.visible = true;
+  }
+
+  function quatToYaw(q) {
+    const siny = 2 * (q.w * q.z + q.x * q.y);
+    const cosy = 1 - 2 * (q.y * q.y + q.z * q.z);
+    return Math.atan2(siny, cosy);
+  }
+
+  /* =================================================
+   * 5. Goal Publisher
+   * ================================================= */
+  const goalTopic = new ROSLIB.Topic({
+    ros: ros,
+    name: '/goal_pose',
+    messageType: 'geometry_msgs/msg/PoseStamped'
+  });
+
+  // 취소 버튼 추가 
+  const navActionClient = new ROSLIB.ActionClient({
+  ros: ros,
+  serverName: '/navigate_to_pose',
+  actionName: 'nav2_msgs/action/NavigateToPose'
+  });
+
+let currentGoal = null;
+
+  /* =================================================
+   * 6. Goal Marker
+   * ================================================= */
+
+   // 점선 
+  const globalPathShape = new createjs.Shape();
+  viewer.scene.addChild(globalPathShape);
+
+
+  // 화살표 
+  const goalMarker = new createjs.Shape();
+  goalMarker.graphics
+    .beginFill("rgba(0,255,0,0.7)")
+    .drawCircle(0, 0, 0.2);
+
+  goalMarker.visible = false;
+  viewer.scene.addChild(goalMarker);
+
+  /* =================================================
+   * 7. 마우스 클릭 → Goal 전송
+   * ================================================= */
+  viewer.scene.addEventListener('stagemousedown', function (event) {
+
+    const pos = viewer.scene.globalToRos(event.stageX, event.stageY);
+
+    console.log("Goal clicked:", pos);
+
+    const goalMsg = new ROSLIB.Message({
+      header: {
+        frame_id: 'map',
+        stamp: { sec: 0, nanosec: 0 }
+      },
+      pose: {
+        position: {
+          x: pos.x,
+          y: pos.y,
+          z: 0.0
+        },
+        orientation: {
+          x: 0.0,
+          y: 0.0,
+          z: 0.0,
+          w: 1.0
+        }
+      }
+    });
+
+    // 추가 
+//    currentGoal.send();
+
+    goalTopic.publish(goalMsg);
+
+    goalMarker.x = pos.x;
+    goalMarker.y = -pos.y;
+    goalMarker.visible = true;
+  });
+
+  document.getElementById("cancelBtn").onclick = function () {
+    if (currentGoal) {
+      console.log("Cancel goal");
+      currentGoal.cancel();
+      goalMarker.visible = false;
+    }
+  };
+
+  // const globalPathShape = new createjs.Shape();
+  // viewer.scene.addChild(globalPathShape);
+
+  const planTopic = new ROSLIB.Topic({
+  ros: ros,
+  name: '/plan',
+  messageType: 'nav_msgs/msg/Path'
+});
+
+planTopic.subscribe(function (msg) {
+
+  if (!msg.poses || msg.poses.length === 0) return;
+
+  const g = globalPathShape.graphics;
+  g.clear();
+
+  // 파란색 경로
+  g.setStrokeStyle(0.05);
+  g.setStrokeDash([0.2, 0.2]);   // ⭐ 점선 설정
+  g.beginStroke("blue");
+
+  msg.poses.forEach((pose, index) => {
+    const x = pose.pose.position.x;
+    const y = -pose.pose.position.y; // ros2d 좌표계 보정
+
+    if (index === 0) {
+      g.moveTo(x, y);
+    } else {
+      g.lineTo(x, y);
+    }
+  });
+
+  g.endStroke();
+});
+
+//// 초기 위치 설정 관련 
+
+const initialPoseTopic = new ROSLIB.Topic({
+  ros: ros,
+  name: '/initialpose',
+  messageType: 'geometry_msgs/msg/PoseWithCovarianceStamped'
+});
+const initPoseMarker = new ROS2D.ArrowShape({
+  size: 0.4,
+  strokeSize: 0.05,
+  fillColor: createjs.Graphics.getRGB(0, 0, 255, 0.9),
+  strokeColor: createjs.Graphics.getRGB(0, 0, 255, 1.0)
+});
+initPoseMarker.visible = false;
+viewer.scene.addChild(initPoseMarker);
+viewer.scene.addEventListener('stagemousedown', function (event) {
+
+  // Shift 키 안 누르면 무시
+  if (!event.nativeEvent.shiftKey) return;
+
+  const pos = viewer.scene.globalToRos(event.stageX, event.stageY);
+
+  const yaw = 0.0; // 일단 방향 없이 (고급은 아래 설명)
+
+  const q = yawToQuat(yaw);
+
+  const msg = new ROSLIB.Message({
+    header: {
+      frame_id: 'map',
+      stamp: { sec: 0, nanosec: 0 }
+    },
+    pose: {
+      pose: {
+        position: { x: pos.x, y: pos.y, z: 0 },
+        orientation: q
+      },
+      covariance: [
+        0.25, 0, 0, 0, 0, 0,
+        0, 0.25, 0, 0, 0, 0,
+        0, 0, 0.01, 0, 0, 0,
+        0, 0, 0, 0.01, 0, 0,
+        0, 0, 0, 0, 0.01, 0,
+        0, 0, 0, 0, 0, 0.01
+      ]
+    }
+  });
+
+  initialPoseTopic.publish(msg);
+
+  // 마커 표시
+  initPoseMarker.x = pos.x;
+  initPoseMarker.y = -pos.y;
+  initPoseMarker.rotation = -yaw * 180 / Math.PI;
+  initPoseMarker.visible = true;
+
+  console.log("Initial pose set:", pos);
+});
+function yawToQuat(yaw) {
+  return {
+    x: 0,
+    y: 0,
+    z: Math.sin(yaw / 2),
+    w: Math.cos(yaw / 2)
+  };
+}
+
+
+
+
+
+
+
+
+}
+</script>
+</head>
+
+<body onload="init()" style="margin:0; font-family: Arial, sans-serif;">
+
+  <h1 style="margin:15px;">🧭 Nav2 Web Debug Viewer</h1>
+
+  <h3 style="margin-left:15px;">
+    상태 :
+    <span id="status" style="color:red;">연결 중...</span>
+  </h3>
+
+  <!-- 메인 레이아웃 -->
+  <div style="
+    display:flex;
+    gap:20px;
+    padding:15px;
+    box-sizing:border-box;
+  ">
+
+    <!-- ================= LEFT : MAP ================= -->
+    <div style="flex:1;">
+
+      <div id="map" style="
+        width:900px;
+        height:900px;
+        border:2px solid #333;
+        background:#eee;">
+      </div>
+
+      <button id="cancelBtn"
+        style="
+          margin-top:10px;
+          padding:10px 20px;
+          background:#d32f2f;
+          color:white;
+          font-size:16px;
+          border:none;
+          border-radius:6px;
+          cursor:pointer;">
+        🔴 Cancel Goal
+      </button>
+
+    </div>
+
+    <!-- ================= RIGHT : MANUAL ================= -->
+    <div style="
+      width:820px;
+      background:#f9f9f9;
+      border:1px solid #ccc;
+      border-radius:8px;
+      padding:15px;
+      box-sizing:border-box;
+      overflow-y:auto;
+      max-height:950px;
+    ">
+
+      <h2>📘 Manual</h2>
+
+      <h3>🟦 1. Map & Robot</h3>
+      <ul>
+        <li>지도는 <code>/map</code> 토픽으로 자동 표시됩니다.</li>
+        <li><span style="color:red;">빨간 화살표</span>는 로봇의 현재 위치입니다.</li>
+      </ul>
+
+      <h3>🟢 2. Initial Pose (필수)</h3>
+      <ul>
+        <li><b>Shift + 클릭</b> → 초기 위치 설정</li>
+        <li>RViz의 <b>2D Pose Estimate</b>와 동일</li>
+        <li>설정하지 않으면 Nav2가 동작하지 않습니다</li>
+      </ul>
+
+      <h3>🎯 3. Set Goal</h3>
+      <ul>
+        <li><b>클릭</b> → 이동 목표 설정</li>
+        <li><span style="color:green;">초록 원</span> = 목표 위치</li>
+      </ul>
+
+      <h3>🟦 4. Global Path</h3>
+      <ul>
+        <li><span style="color:blue;">파란 점선</span>은 Nav2 Global Path</li>
+        <li>실시간으로 갱신됩니다</li>
+      </ul>
+
+      <h3>🔴 5. Cancel Goal</h3>
+      <ul>
+        <li><b>Cancel Goal</b> 버튼 → 즉시 정지</li>
+      </ul>
+
+      <h3>⚠️ Notes</h3>
+      <ul>
+        <li>Nav2, AMCL, rosbridge 실행 필요</li>
+        <li>위치가 이상하면 초기 위치 재설정</li>
+      </ul>
+
+    </div>
+
+  </div>
+
+</body>
+
+</html>

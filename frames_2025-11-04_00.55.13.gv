@@ -1,0 +1,27 @@
+digraph G {
+"TB3_3/base_link" -> "TB3_3/wheel_left_link"[label=" Broadcaster: default_authority\nAverage rate: 14.91\nBuffer length: 4.896\nMost recent transform: 330.387\nOldest transform: 325.491\n"];
+"TB3_3/base_footprint" -> "TB3_3/base_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"TB3_3/base_link" -> "TB3_3/wheel_right_link"[label=" Broadcaster: default_authority\nAverage rate: 14.91\nBuffer length: 4.896\nMost recent transform: 330.387\nOldest transform: 325.491\n"];
+"TB3_1/base_footprint" -> "TB3_1/base_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"TB3_1/odom" -> "TB3_1/base_footprint"[label=" Broadcaster: default_authority\nAverage rate: 29.617\nBuffer length: 4.862\nMost recent transform: 330.369\nOldest transform: 325.507\n"];
+"TB3_1/base_link" -> "TB3_1/caster_back_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"TB3_1/base_link" -> "TB3_1/imu_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"TB3_1/base_link" -> "TB3_1/base_scan"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"TB3_3/odom" -> "TB3_3/base_footprint"[label=" Broadcaster: default_authority\nAverage rate: 29.617\nBuffer length: 4.862\nMost recent transform: 330.387\nOldest transform: 325.525\n"];
+"TB3_3/base_link" -> "TB3_3/caster_back_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"TB3_3/base_link" -> "TB3_3/imu_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"TB3_3/base_link" -> "TB3_3/base_scan"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"TB3_1/base_link" -> "TB3_1/wheel_left_link"[label=" Broadcaster: default_authority\nAverage rate: 14.913\nBuffer length: 4.828\nMost recent transform: 330.335\nOldest transform: 325.507\n"];
+"TB3_1/base_link" -> "TB3_1/wheel_right_link"[label=" Broadcaster: default_authority\nAverage rate: 14.913\nBuffer length: 4.828\nMost recent transform: 330.335\nOldest transform: 325.507\n"];
+"TB3_2/odom" -> "TB3_2/base_footprint"[label=" Broadcaster: default_authority\nAverage rate: 29.617\nBuffer length: 4.862\nMost recent transform: 330.373\nOldest transform: 325.511\n"];
+"TB3_2/base_footprint" -> "TB3_2/base_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"TB3_2/base_link" -> "TB3_2/caster_back_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"TB3_2/base_link" -> "TB3_2/imu_link"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"TB3_2/base_link" -> "TB3_2/base_scan"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"TB3_2/base_link" -> "TB3_2/wheel_left_link"[label=" Broadcaster: default_authority\nAverage rate: 14.913\nBuffer length: 4.828\nMost recent transform: 330.339\nOldest transform: 325.511\n"];
+"TB3_2/base_link" -> "TB3_2/wheel_right_link"[label=" Broadcaster: default_authority\nAverage rate: 14.913\nBuffer length: 4.828\nMost recent transform: 330.339\nOldest transform: 325.511\n"];
+edge [style=invis];
+ subgraph cluster_legend { style=bold; color=black; label ="view_frames Result";
+"Recorded at time: 1762185313.1168528"[ shape=plaintext ] ;
+}->"TB3_2/odom";
+}
