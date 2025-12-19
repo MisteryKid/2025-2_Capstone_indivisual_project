@@ -2,8 +2,9 @@
 
 # case 1 : 웹에서 1대의 터틀봇 자율주행 실행하기 
 ### 1번 tf 변환기 준비  
+'''
 ros2 run tf2_web_republisher tf2_web_republisher_node --ros-args -p use_sim_time:=true
-
+'''
 ### 2번 웹이랑 연결 통로 열여주기  
 ros2 launch rosbridge_server rosbridge_websocket_launch.xml use_sim_time:=true
 
